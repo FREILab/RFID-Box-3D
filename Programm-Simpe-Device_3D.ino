@@ -130,6 +130,7 @@ void loop() {
 }
 
 String readID(){
+  mfrc522.PCD_Init();
   // Look for new cards
   for(int i = 0; i < 3; i++) {
     if(mfrc522.PICC_IsNewCardPresent()){
