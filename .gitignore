@@ -53,3 +53,5 @@ dkms.conf
 
 config_3D.h
 .DS_Store
+/hardware/PCB/production/backups
+/hardware/PCB/RFID_Platine-backups

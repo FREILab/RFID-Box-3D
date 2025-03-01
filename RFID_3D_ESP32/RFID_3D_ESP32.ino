@@ -29,10 +29,10 @@
 #define LED_YELLOW 33  // Pin for yellow LED
 #define LED_GREEN 25   // Pin for green LED
 
-#define SWITCH_PIN 4     // Pin for main switch
-#define SWITCHOFF_PIN 2  // Pin for switch-off button
+#define RFID_SWITCH_PIN 4     // Pin for RFID switch
+#define OFF_SWITCH_PIN 27  // Pin for switch-off button
 
-#define SIGNAL_PIN 22  // Pin for signal output
+#define RELAIS_PIN 22  // Pin for relais output
 
 //------------------------------------------------------------------------------
 // WiFi Credentials (from config_3D.h)
@@ -100,8 +100,8 @@ void setup() {
 void loop() {
   // Log system status at verbose level
   Log.verbose("Free heap: %d bytes\n", ESP.getFreeHeap());
-  Log.verbose("Switch state main switch: %d\n", digitalRead(SWITCH_PIN));
-  Log.verbose("Switch state logout switch: %d\n", digitalRead(SWITCHOFF_PIN));
+  Log.verbose("Switch state RFID switch: %d\n", digitalRead(RFID_SWITCH_PIN));
+  Log.verbose("Switch state logout switch: %d\n", digitalRead(OFF_SWITCH_PIN));
   Log.verbose("Login State: %d\n", loginState);
 
   // Select behavior based on RFIDCARD_AUTH_CONST:
@@ -124,18 +124,19 @@ void loop() {
  * Runs a startup sequence that briefly turns on all LEDs.
  */
 void initPins() {
+  Log.verbose("[initPins] Setting up Pins... ");
   // Configure switch pins as inputs
-  pinMode(SWITCH_PIN, INPUT);
-  pinMode(SWITCHOFF_PIN, INPUT);
+  pinMode(RFID_SWITCH_PIN, INPUT_PULLUP);
+  pinMode(OFF_SWITCH_PIN, INPUT_PULLUP);
 
   // Configure LED and signal pins as outputs
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_YELLOW, OUTPUT);
   pinMode(LED_GREEN, OUTPUT);
-  pinMode(SIGNAL_PIN, OUTPUT);
+  pinMode(RELAIS_PIN, OUTPUT);
 
-  // Set signal pin to LOW initially
-  digitalWrite(SIGNAL_PIN, LOW);
+  // Set Relais pin to LOW initially
+  digitalWrite(RELAIS_PIN, LOW);
 
   // Startup sequence: Turn all LEDs on for 1 second
   digitalWrite(LED_RED, HIGH);
@@ -148,7 +149,7 @@ void initPins() {
   digitalWrite(LED_YELLOW, HIGH);
   digitalWrite(LED_GREEN, LOW);
 
-  Log.verbose("[initPins] Pin configuration complete.\n");
+  Log.verbose("done\n");
 }
 
 /**
@@ -188,8 +189,13 @@ void connectToWiFi() {
  * If the self-test fails, the ESP32 restarts.
  */
 void initRFID() {
+  Log.verbose("[initRFID] Setting up SPI ... ");
   SPI.begin();         // Start SPI communication
+  Log.verbose("done.\n");
+  
+  Log.verbose("[initRFID] Setting up RFID Module ... ");
   mfrc522.PCD_Init();  // Initialize RFID module
+  Log.verbose("done.\n");
 
   // Perform self-test; restart ESP32 if initialization fails
   if (!mfrc522.PCD_PerformSelfTest()) {
@@ -210,11 +216,11 @@ void logout() {
   Log.notice("[logout] Logging out current session.\n");
   loggedInID = "0";
 
-  // Turn off LEDs and signal output
+  // Turn off LEDs and relais output
   digitalWrite(LED_GREEN, LOW);
   digitalWrite(LED_YELLOW, LOW);
   digitalWrite(LED_RED, LOW);
-  digitalWrite(SIGNAL_PIN, LOW);
+  digitalWrite(RELAIS_PIN, LOW);
 }
 
 /**
@@ -225,7 +231,11 @@ void logout() {
  * @return A String representing the UID in hexadecimal format, or "0" if no card is found.
  */
 String readID() {
+  Log.verbose("[initRFID] Setting up RFID Module ... ");
   mfrc522.PCD_Init();  // Reinitialize the RFID module
+  Log.verbose("done.\n");
+
+  Log.verbose("[initRFID] Reading UID:\n");
 
   // Attempt to read the card up to 3 times
   for (int i = 0; i < 3; i++) {
@@ -269,8 +279,18 @@ void tryLoginID(String uid) {
   HTTPClient http;
   WiFiClient client;
 
+  // DEBUG ++++++++++++++ start ++++++++++++++++++++++++++++++++++++++++++++
+
+  Log.verbose("[tryLoginID] Circumvent Auth; force sucessful login.\n");
   loginState = HIGH;  //TODO: DEBUG
+  Log.notice("[tryLoginID] Login successful. UID: %s\n", uid.c_str());
+  Log.notice("[tryLoginID] Enabling Output.\n");
+  digitalWrite(LED_YELLOW, LOW);   // Turn off yellow LED
+  digitalWrite(LED_GREEN, HIGH);   // Indicate success with green LED
+  digitalWrite(RELAIS_PIN, HIGH);  // Activate relais pin
   return;
+
+  // DEBUG ++++++++++++++ end ++++++++++++++++++++++++++++++++++++++++++++++
 
   // Avoid duplicate HTTP requests
   if (isHttpRequestInProgress) {
@@ -303,13 +323,13 @@ void tryLoginID(String uid) {
         Log.notice("[tryLoginID] Login successful. UID: %s\n", uid.c_str());
         digitalWrite(LED_YELLOW, LOW);   // Turn off yellow LED
         digitalWrite(LED_GREEN, HIGH);   // Indicate success with green LED
-        digitalWrite(SIGNAL_PIN, HIGH);  // Activate signal pin
+        digitalWrite(RELAIS_PIN, HIGH);  // Activate relais pin
         loginState = HIGH;
       } else {
         Log.error("[tryLoginID] Login failed. Server response did not confirm login.\n");
         digitalWrite(LED_YELLOW, LOW);
         digitalWrite(LED_RED, HIGH);
-        digitalWrite(SIGNAL_PIN, LOW);
+        digitalWrite(RELAIS_PIN, LOW);
         loginState = LOW;
         delay(2000);
         digitalWrite(LED_RED, LOW);
@@ -393,7 +413,7 @@ void updateLogin() {
 void handleAuthConstTrue() {
   Log.verbose("[handleAuthConstTrue] Waiting for main switch press (active low)...\n");
   // Wait until the main switch is pressed (active low)
-  while (digitalRead(SWITCH_PIN) != LOW) {
+  while (digitalRead(RFID_SWITCH_PIN) != LOW) {
     delay(50);
   }
 
@@ -405,7 +425,7 @@ void handleAuthConstTrue() {
   tryLoginID(uid);
 
   // While the button remains pressed, do nothing
-  while (digitalRead(SWITCH_PIN) == LOW) {
+  while (digitalRead(RFID_SWITCH_PIN) == LOW) {
     delay(50);
   }
 
@@ -427,18 +447,18 @@ void handleAuthConstTrue() {
 void handleAuthConstFalse() {
   if (!loginState) {
     Log.verbose("[handleAuthConstFalse] Waiting for main switch press to log in (active low)...\n");
-    while (digitalRead(SWITCH_PIN) != LOW) { delay(50); }
+    while (digitalRead(RFID_SWITCH_PIN) != LOW) { delay(50); }
     delay(100);  // Debounce delay
     uid = readID();
     Log.notice("[handleAuthConstFalse] Card UID: %s\n", uid.c_str());
     tryLoginID(uid);
-    while (digitalRead(SWITCH_PIN) == LOW) { delay(50); }
+    while (digitalRead(RFID_SWITCH_PIN) == LOW) { delay(50); }
   }
   if (loginState) {
     Log.verbose("[handleAuthConstFalse] Logged in. Waiting for switch-off button (active low) to log out...\n");
-    while (digitalRead(SWITCHOFF_PIN) != LOW) { delay(50); }
+    while (digitalRead(OFF_SWITCH_PIN) != LOW) { delay(50); }
     delay(100);  // Debounce delay
     logout();
-    while (digitalRead(SWITCHOFF_PIN) == LOW) { delay(50); }
+    while (digitalRead(OFF_SWITCH_PIN) == LOW) { delay(50); }
   }
 }
