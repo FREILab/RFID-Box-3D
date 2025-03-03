@@ -28,14 +28,14 @@
 
 #define MACHINE_RELAY_PIN 22  // Pin controlling the machine relay
 #define CARD_DETECT_PIN 4     // Button to stop machine / Taster 1
-#define STOP_BUTTON_PIN 2     // Button to start machine / Taster 2
+#define STOP_BUTTON_PIN 13     // Button to start machine / Taster 2
 
 #define RFID_RST_PIN 5  // Reset pin for the RFID module
 #define RFID_SS_PIN 21  // SDA pin for the RFID module
 
 #define LED_RED_PIN 32     // Pin for red LED
 #define LED_YELLOW_PIN 33  // Pin for yellow LED
-#define LED_GREEN_PIN 25   // Pin for green LED
+#define LED_GREEN_PIN 26   // Pin for green LED
 
 //------------------------------------------------------------------------------
 // Interrupt Service routines
@@ -111,7 +111,8 @@ void setup() {
   digitalWrite(MACHINE_RELAY_PIN, LOW);  // Ensure machine is off initially
   setLED_ryg(1, 1, 1);                   // all reds on
 
-  delay(10);  // wait for pullups to get active
+
+  delay(1000);  // wait for pullups to get active
 
   // read button states
   cardDetected_flag = digitalRead(CARD_DETECT_PIN);
@@ -170,7 +171,7 @@ void loop() {
 
     if (stopPressed_flag == false) {
       // nothing to do
-      Serial.println("[loop] Machnine not running, Stop button not pressed -> do nothing");
+      //Serial.println("[loop] Machnine not running, Stop button not pressed -> do nothing");
     } else if (stopPressed_flag == true) {
       // stop buttin was initially triggered and machine is not running
       Serial.println("[loop] Machnine not running, Stop button pressed -> abort loop");
@@ -185,7 +186,7 @@ void loop() {
 
     if (cardDetected_flag == false) {
       // nothing to do, abort loop
-      Serial.println("[loop] Machnine not running, RFID button not pressed -> do nothing");
+      //Serial.println("[loop] Machnine not running, RFID button not pressed -> do nothing");
     } else if (cardDetected_flag == true) {
       // carddetect was initially triggered and machine is not running
       Serial.println("[loop] Machnine not running, RFID button pressed -> check authentification");
@@ -227,7 +228,7 @@ void loop() {
 
     if (stopPressed_flag == false) {
       // nothing to do
-      Serial.println("[loop] Machnine running, Stop button not pressed -> do nothing");
+      // Serial.println("[loop] Machnine running, Stop button not pressed -> do nothing");
     } else if (stopPressed_flag == true) {
       // stop buttin was initially triggered and machine is running
       Serial.println("[loop] Machnine running, Stop button pressed -> stop machine and abort loop");
@@ -255,7 +256,7 @@ void loop() {
 
     if (cardDetected_flag == false) {
       // nothing to do, abort loop
-      Serial.println("[loop] Machnine already running, RFID button not pressed -> do nothing");
+      // Serial.println("[loop] Machnine already running, RFID button not pressed -> do nothing");
     } else if (cardDetected_flag == true) {
       // nothing to do, abort loop
       Serial.println("[loop] Machnine already running, RFID button pressed -> do nothing");
@@ -269,6 +270,7 @@ void loop() {
 }
 
 void setLED_ryg(bool led_red, bool led_yellow, bool led_green) {
+  Serial.printf("Setting LEDs - Red: %d, Yellow: %d, Green: %d\n", led_red, led_yellow, led_green);
   digitalWrite(LED_RED_PIN, led_red);        // LED Test
   digitalWrite(LED_YELLOW_PIN, led_yellow);  // LED Test
   digitalWrite(LED_GREEN_PIN, led_green);    // LED Test
