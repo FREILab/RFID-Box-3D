@@ -45,14 +45,21 @@
 volatile bool cardDetected_flag = false;
 volatile bool stopPressed_flag = false;
 
+// Motex
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+
 // ISR for RFID Button
 void IRAM_ATTR cardDetectISR_flag() {
+  portENTER_CRITICAL_ISR(&mux);
   cardDetected_flag = true;
+  portEXIT_CRITICAL_ISR(&mux);
 }
 
 // ISR for Stop Button
 void IRAM_ATTR stopButtonISR_flag() {
+  portENTER_CRITICAL_ISR(&mux);
   stopPressed_flag = true;
+  portEXIT_CRITICAL_ISR(&mux);
 }
 
 const int TIME_DEBOUNCE = 100;  // 100 ms button debounce
