@@ -280,29 +280,26 @@ void setLED_ryg(bool led_red, bool led_yellow, bool led_green) {
  * @brief Connects the ESP32 to the WiFi network.
  *
  * Attempts to establish a connection up to 10 times.
- * If the connection fails, the ESP32 restarts.
  */
 void connectToWiFi() {
   WiFi.begin(ssid, pass);
   int retries = 0;
+  int retryDelay = 500; // Start with 500ms delay
 
-  // Attempt connection up to 10 times
-  while ((WiFi.status() != WL_CONNECTED) && (retries < 10)) {
+  while ( (WiFi.status() != WL_CONNECTED) && (retries < 10) ) {
+    Serial.printf("WiFi connection attempt %d...\n", retries + 1);
+    delay(retryDelay);
     retries++;
-    delay(500);
-    Serial.println("WiFi connection attempt %d...\n, retries");
+    retryDelay *= 2; // Exponential backoff
   }
 
-  // Verify connection status
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("[connectToWiFi] WiFi connected successfully.\n");
-    digitalWrite(LED_YELLOW_PIN, LOW);  // Turn off yellow LED once connected
+    Serial.println("[connectToWiFi] WiFi connected successfully.");
+    digitalWrite(LED_YELLOW_PIN, LOW);
   } else {
-    // If connection fails, log error and restart ESP32
-    digitalWrite(LED_RED_PIN, HIGH);
-    Serial.println("[connectToWiFi] WiFi connection failed after %d attempts. Restarting ESP32...\n, retries");
-    delay(2000);  // Allow time for error visibility
-    ESP.restart(); // TODO might be problem
+    Serial.println("[connectToWiFi] WiFi connection failed after 10 attempts. Retrying in 30 sec...");
+    delay(30000); // Wait before trying again instead of restarting
+    connectToWiFi(); // Retry connection
   }
 }
 
