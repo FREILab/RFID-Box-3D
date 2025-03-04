@@ -156,9 +156,6 @@ void setup() {
 
 
 void next_State() {
-  Serial.print("Previous State: ");
-  Serial.print(currentState);
-  Serial.print(", ");
   switch (currentState) {
     case STANDBY:
       if (digitalRead(BUTTON_RFID) == LOW) {
@@ -175,10 +172,20 @@ void next_State() {
       break;
 
     case RUNNING:
-      if (digitalRead(BUTTON_STOP) == LOW || digitalRead(BUTTON_RFID) == HIGH) {
-        nextState = RESET;
+      // Differentiate if the machine need the RFID card connected constantly:
+      if (RFIDCARD_AUTH_CONST == true) {
+        // The card has to be connected constantly:
+        if (digitalRead(BUTTON_STOP) == LOW || digitalRead(BUTTON_RFID) == HIGH) {
+          nextState = RESET;
+        }
+        break;
+      } else if (RFIDCARD_AUTH_CONST == false) {
+        // Only a singhle sign-on is necessary:
+        if (digitalRead(BUTTON_STOP) == LOW) {
+          nextState = RESET;
+        }
+        break;
       }
-      break;
 
     case RESET:
       if ((digitalRead(BUTTON_RFID) == HIGH) && (digitalRead(BUTTON_STOP) == HIGH)) {
@@ -186,9 +193,6 @@ void next_State() {
       }
       break;
   }
-  
-  Serial.print("Next State: ");
-  Serial.println(nextState);
   currentState = nextState;
 }
 
@@ -204,10 +208,12 @@ void loop() {
   switch (currentState) {
     case STANDBY:
       Serial.println("State: STANDBY");
+      setLED_ryg(0, 1, 0);
       break;
 
     case IDENTIFICATION:
       Serial.println("State: IDENTIFICATION");
+      setLED_ryg(0, 1, 1);
       // Simulate authentication process
       auth_check = (random(0, 2) == 1);  // Randomly set auth_check for testing
       if (auth_check == 0) {
@@ -215,20 +221,22 @@ void loop() {
       } else if (auth_check == 1) {
         Serial.println("Identification passed");
       }
-      
+
       break;
 
     case RUNNING:
       Serial.println("State: RUNNING");
+      setLED_ryg(0, 0, 1);
       break;
 
     case RESET:
       Serial.println("State: RESET");
+      setLED_ryg(1, 0, 0);
       break;
   }
 
   next_State();
-  delay(500);  // Small delay for stability
+  delay(100);  // Small delay for stability
 }
 
 void setLED_ryg(bool led_red, bool led_yellow, bool led_green) {
