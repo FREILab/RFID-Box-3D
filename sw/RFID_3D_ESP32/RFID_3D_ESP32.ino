@@ -19,16 +19,34 @@
 #include <HTTPClient.h>
 #include <SPI.h>
 #include "MFRC522.h"
+#include <ArduinoLog.h>  // Advanced logging library
 
 // Note: for flashing software the stop button has to be pressed
+
+//------------------------------------------------------------------------------
+// State Definietions
+//------------------------------------------------------------------------------
+
+enum State {
+  STANDBY,
+  IDENTIFICATION,
+  RUNNING,
+  RESET
+};
+
+State currentState = STANDBY;
+State nextState = STANDBY;
+bool auth_check = true;
+unsigned long stateChangeTime = 0;
+const unsigned long STATE_DELAY = 500;  // 500ms delay before transition
 
 //------------------------------------------------------------------------------
 // Pin Definitions
 //------------------------------------------------------------------------------
 
 #define MACHINE_RELAY_PIN 22  // Pin controlling the machine relay
-#define CARD_DETECT_PIN 4     // Button to stop machine / Taster 1
-#define STOP_BUTTON_PIN 13     // Button to start machine / Taster 2
+#define BUTTON_RFID 4         // Button to stop machine / Taster 1
+#define BUTTON_STOP 13        // Button to start machine / Taster 2
 
 #define RFID_RST_PIN 5  // Reset pin for the RFID module
 #define RFID_SS_PIN 21  // SDA pin for the RFID module
@@ -42,23 +60,14 @@
 //------------------------------------------------------------------------------
 
 // current button state; have to be reset after been read
-volatile bool cardDetected_flag = false;
-volatile bool stopPressed_flag = false;
+volatile bool buttonStopPressed = false;
 
 // Motex
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
-// ISR for RFID Button
-void IRAM_ATTR cardDetectISR_flag() {
+void IRAM_ATTR handleButtonStopFalling() {
   portENTER_CRITICAL_ISR(&mux);
-  cardDetected_flag = true;
-  portEXIT_CRITICAL_ISR(&mux);
-}
-
-// ISR for Stop Button
-void IRAM_ATTR stopButtonISR_flag() {
-  portENTER_CRITICAL_ISR(&mux);
-  stopPressed_flag = true;
+  buttonStopPressed = true;
   portEXIT_CRITICAL_ISR(&mux);
 }
 
@@ -84,7 +93,7 @@ String loggedInID = "0";     // Currently logged-in RFID card ID
 String uid = "";             // UID read from an RFID card
 int loginUpdateCounter = 0;  // Counter to trigger session extension
 
-bool loginState = LOW;      // Flag indicating if login was successful
+bool loginState = LOW;  // Flag indicating if login was successful
 
 bool isHttpRequestInProgress = false;        // Flag to indicate an ongoing HTTP request
 bool isCardAuthConst = RFIDCARD_AUTH_CONST;  // Constant for card authentication
@@ -110,9 +119,9 @@ void setup() {
 
 
   // RFID card detection button
-  pinMode(CARD_DETECT_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_RFID, INPUT_PULLUP);
   // Logout button
-  pinMode(STOP_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_STOP, INPUT_PULLUP);
 
   // set initial states
   digitalWrite(MACHINE_RELAY_PIN, LOW);  // Ensure machine is off initially
@@ -121,28 +130,7 @@ void setup() {
 
   delay(1000);  // wait for pullups to get active
 
-  // read button states
-  cardDetected_flag = digitalRead(CARD_DETECT_PIN);
-  stopPressed_flag = digitalRead(CARD_DETECT_PIN);
-
-  if (cardDetected_flag == 0) {
-    // button pressed, should not be the case. display error and halt
-    setLED_ryg(1, 0, 0);  // show red
-    // block startup
-    while (1) {}
-  }
-  if (stopPressed_flag == 0) {
-    // button pressed, should not be the case. display error and halt
-    setLED_ryg(1, 0, 0);  // show red
-    // block startup
-    while (1) {}
-  }
-
-  // Button test sucessful, attach interrups
-  attachInterrupt(digitalPinToInterrupt(CARD_DETECT_PIN), cardDetectISR_flag, FALLING);
-  cardDetected_flag = false;
-  attachInterrupt(digitalPinToInterrupt(STOP_BUTTON_PIN), stopButtonISR_flag, FALLING);
-  stopPressed_flag = false;
+  attachInterrupt(digitalPinToInterrupt(BUTTON_STOP), handleButtonStopFalling, FALLING);
 
   // Connect to WiFi
   connectToWiFi();
@@ -167,113 +155,80 @@ void setup() {
 
 
 
-void loop() {
-  // TODO check wifi every 5 seconds
-
-  /* wifi code*/
-
-  if (machineRunning == false) {
-
-    // Check Stop Button while machine is not running
-
-    if (stopPressed_flag == false) {
-      // nothing to do
-      //Serial.println("[loop] Machnine not running, Stop button not pressed -> do nothing");
-    } else if (stopPressed_flag == true) {
-      // stop buttin was initially triggered and machine is not running
-      Serial.println("[loop] Machnine not running, Stop button pressed -> abort loop");
-      // debounce switch and reset flag
-      delay(TIME_DEBOUNCE);
-      stopPressed_flag = false;
-
-      return;  // abort main loop to avoud RFID checking
-    }
-
-    // Check RFID button while machine is not running
-
-    if (cardDetected_flag == false) {
-      // nothing to do, abort loop
-      //Serial.println("[loop] Machnine not running, RFID button not pressed -> do nothing");
-    } else if (cardDetected_flag == true) {
-      // carddetect was initially triggered and machine is not running
-      Serial.println("[loop] Machnine not running, RFID button pressed -> check authentification");
-
-      // debounce switch and reset flag
-      delay(TIME_DEBOUNCE);
-      cardDetected_flag = false;
-
-      // indicate that authentification is checked
-      setLED_ryg(0, 1, 0);  // yellow
-
-      // TODO contact server
-
-      bool authentification = AUTH_OVERRIDE;
-
-      if (authentification == false) {
-        // authenfication failed, keep machine off
-        Serial.println("[loop] Authentification not sucessful -> don't enable relais");
-
-        // indicate failed attempt
-        setLED_ryg(1, 0, 0);  // red
-
-        delay(1000);
-      } else if (authentification == true) {
-        // authenfication pass, enable machine
-        Serial.println("[loop] Authentification sucessful -> enable relais");
-
-        // indicate sucessful attempt
-        setLED_ryg(0, 0, 1);  // green
-
-        // enable output
-        digitalWrite(MACHINE_RELAY_PIN, HIGH);
-        machineRunning = true;
+void next_State() {
+  Serial.print("Previous State: ");
+  Serial.print(currentState);
+  Serial.print(", ");
+  switch (currentState) {
+    case STANDBY:
+      if (digitalRead(BUTTON_RFID) == LOW) {
+        nextState = IDENTIFICATION;
       }
-    }
-  } else if (machineRunning == true) {
+      break;
 
-    // Check Stop Button while machine is running
+    case IDENTIFICATION:
+      if (auth_check) {
+        nextState = RUNNING;
+      } else {
+        nextState = RESET;
+      }
+      break;
 
-    if (stopPressed_flag == false) {
-      // nothing to do
-      // Serial.println("[loop] Machnine running, Stop button not pressed -> do nothing");
-    } else if (stopPressed_flag == true) {
-      // stop buttin was initially triggered and machine is running
-      Serial.println("[loop] Machnine running, Stop button pressed -> stop machine and abort loop");
+    case RUNNING:
+      if (digitalRead(BUTTON_STOP) == LOW || digitalRead(BUTTON_RFID) == HIGH) {
+        nextState = RESET;
+      }
+      break;
 
-      // debounce switch and reset flag
-      delay(TIME_DEBOUNCE);
-      stopPressed_flag = false;
-
-      // indicate that machine will be stopped
-      setLED_ryg(1, 1, 0);  // red + yellow
-
-      // disable output
-      digitalWrite(MACHINE_RELAY_PIN, LOW);
-      machineRunning = false;
-
-      delay(1000);
-
-      // reset LEDs
-      setLED_ryg(0, 0, 0);  // all off
-
-      return;  // abort main loop
-    }
-
-    // Check RFID button while machine is running
-
-    if (cardDetected_flag == false) {
-      // nothing to do, abort loop
-      // Serial.println("[loop] Machnine already running, RFID button not pressed -> do nothing");
-    } else if (cardDetected_flag == true) {
-      // nothing to do, abort loop
-      Serial.println("[loop] Machnine already running, RFID button pressed -> do nothing");
-
-      // debounce switch and reset flag
-      delay(TIME_DEBOUNCE);
-      cardDetected_flag = false;
-    }
+    case RESET:
+      if ((digitalRead(BUTTON_RFID) == HIGH) && (digitalRead(BUTTON_STOP) == HIGH)) {
+        nextState = STANDBY;
+      }
+      break;
   }
-  delay(200);  // slow down loop
+  
+  Serial.print("Next State: ");
+  Serial.println(nextState);
+  currentState = nextState;
+}
+
+void loop() {
+
+  // overwirite state with stop button
+  if (buttonStopPressed == true) {
+    // reset flag
+    buttonStopPressed = 0;
+    nextState = RESET;
+  }
+
+  switch (currentState) {
+    case STANDBY:
+      Serial.println("State: STANDBY");
+      break;
+
+    case IDENTIFICATION:
+      Serial.println("State: IDENTIFICATION");
+      // Simulate authentication process
+      auth_check = (random(0, 2) == 1);  // Randomly set auth_check for testing
+      if (auth_check == 0) {
+        Serial.println("Identification failed");
+      } else if (auth_check == 1) {
+        Serial.println("Identification passed");
+      }
+      
+      break;
+
+    case RUNNING:
+      Serial.println("State: RUNNING");
+      break;
+
+    case RESET:
+      Serial.println("State: RESET");
+      break;
+  }
+
+  next_State();
+  delay(500);  // Small delay for stability
 }
 
 void setLED_ryg(bool led_red, bool led_yellow, bool led_green) {
@@ -291,13 +246,13 @@ void setLED_ryg(bool led_red, bool led_yellow, bool led_green) {
 void connectToWiFi() {
   WiFi.begin(ssid, pass);
   int retries = 0;
-  int retryDelay = 500; // Start with 500ms delay
+  int retryDelay = 500;  // Start with 500ms delay
 
-  while ( (WiFi.status() != WL_CONNECTED) && (retries < 10) ) {
+  while ((WiFi.status() != WL_CONNECTED) && (retries < 10)) {
     Serial.printf("WiFi connection attempt %d...\n", retries + 1);
     delay(retryDelay);
     retries++;
-    retryDelay *= 2; // Exponential backoff
+    retryDelay *= 2;  // Exponential backoff
   }
 
   if (WiFi.status() == WL_CONNECTED) {
@@ -305,8 +260,8 @@ void connectToWiFi() {
     digitalWrite(LED_YELLOW_PIN, LOW);
   } else {
     Serial.println("[connectToWiFi] WiFi connection failed after 10 attempts. Retrying in 30 sec...");
-    delay(30000); // Wait before trying again instead of restarting
-    connectToWiFi(); // Retry connection
+    delay(30000);     // Wait before trying again instead of restarting
+    connectToWiFi();  // Retry connection
   }
 }
 
@@ -318,9 +273,9 @@ void connectToWiFi() {
  */
 void initRFID() {
   Serial.println("[initRFID] Setting up SPI ... ");
-  SPI.begin();         // Start SPI communication
+  SPI.begin();  // Start SPI communication
   Serial.println("done.\n");
-  
+
   Serial.println("[initRFID] Setting up RFID Module ... ");
   mfrc522.PCD_Init();  // Initialize RFID module
   Serial.println("done.\n");
@@ -329,7 +284,7 @@ void initRFID() {
   if (!mfrc522.PCD_PerformSelfTest()) {
     Serial.println("[initRFID] RFID self-test failed. Restarting ESP32...\n");
     delay(2000);
-    ESP.restart(); // TODO might be problem
+    ESP.restart();  // TODO might be problem
   } else {
     Serial.println("[initRFID] RFID reader initialized successfully.\n");
   }
