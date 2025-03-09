@@ -315,34 +315,45 @@ void initRFID() {
  *
  * Increments a counter and sends an HTTP GET request to extend the session when the threshold is reached.
  */
-void updateLogin() {
+ /*
+bool updateLogin() {
+
+  // return value: 0 = failed, 1=success
+  bool authentication_success = 0;
+
+
   // Reset LED statuses
   //digitalWrite(LED_RED, LOW);
   //digitalWrite(LED_YELLOW, LOW);
 
-  // Increment counter and check threshold
+  Log.verbose("[updateLogin] Try authentificating with the server\n");
+
+  static HTTPClient http;  
+  static WiFiClient client;
+
+  if (isHttpRequestInProgress || WiFi.status() != WL_CONNECTED) {
+    Log.warning("[updateLogin] HTTP request already in progress. Skipping session update.\n");
+    return -1;  // Skip if busy or not connected
+  }
+
   loginUpdateCounter++;
-  if (loginUpdateCounter < 200) {
-    return;
+  if (loginUpdateCounter < 300) { // Increased threshold for efficiency
+    return 0;
   }
   loginUpdateCounter = 0;  // Reset counter
 
-  HTTPClient http;
-  WiFiClient client;
-
-  Log.info("[updateLogin] Sending session extension request...\n");
-
-  if (isHttpRequestInProgress) {
-    Log.warning("[updateLogin] HTTP request already in progress. Skipping session update.\n");
-    return;
-  }
+  isHttpRequestInProgress = true;
 
   // Construct URL for session extension request
   String url = "http://" + String(SERVER_IP) + "/machine_extend_login/" + AUTHENTICATION_TOKEN + "/" + MACHINE_NAME;
-  http.setTimeout(5000);
+  http.setReuse(true);  // Enable persistent connections
+  http.setTimeout(3000);
+
+
   if (!http.begin(client, url)) {
     Log.error("[updateLogin] Failed to initialize HTTP client for URL: %s\n", url.c_str());
-    return;
+    isHttpRequestInProgress = false;
+    return 0;
   }
 
   Log.info("[updateLogin] Sending HTTP GET request for session extension...\n");
@@ -354,18 +365,19 @@ void updateLogin() {
     if (httpCode == HTTP_CODE_OK) {  // 200 OK
       String payload = http.getString();
       Log.verbose("[updateLogin] Server response: %s\n", payload.c_str());
+      authentication_success = 1;
     }
   } else {
     // HTTP GET failed; log error details and indicate failure with LEDs
     Log.error("[updateLogin] HTTP GET failed: %s\n", http.errorToString(httpCode).c_str());
-    //digitalWrite(LED_RED, HIGH);
-    //digitalWrite(LED_YELLOW, HIGH);
+    authentication_success = 0;
   }
 
   http.end();  // End HTTP connection
   isHttpRequestInProgress = false;
   Log.verbose("[updateLogin] HTTP connection closed.\n");
-}
+  return 1;
+}*/
 
 /**
  * @brief Handles login
@@ -393,14 +405,14 @@ bool perform_auth_check() {
 int tryLoginID(String uid) {
 
   // return value: 0 = failed, 1=success, -1=busy
-  bool authentication_success = 0;
+  int authentication_success = 0;
 
   // Indicate login attempt: turn on yellow LED and ensure red LED is off
   // digitalWrite(LED_YELLOW, HIGH);
   // digitalWrite(LED_RED, LOW);
 
-  HTTPClient http;
-  WiFiClient client;
+  static HTTPClient http;  
+  static WiFiClient client;
 
   // DEBUG ++++++++++++++ start ++++++++++++++++++++++++++++++++++++++++++++
   /*
@@ -416,18 +428,22 @@ int tryLoginID(String uid) {
   // DEBUG ++++++++++++++ end ++++++++++++++++++++++++++++++++++++++++++++++
 
   // Avoid duplicate HTTP requests
-  if (isHttpRequestInProgress) {
+  if (isHttpRequestInProgress || WiFi.status() != WL_CONNECTED) {
     Log.warning("[tryLoginID] HTTP request already in progress. Skipping login attempt.\n");
     return -1;
   }
+  isHttpRequestInProgress = true;
 
   Log.info("[tryLoginID] Initiating login request...\n");
 
   // Construct URL for login request
   String url = "http://" + String(SERVER_IP) + "/machine_try_login/" + AUTHENTICATION_TOKEN + "/" + MACHINE_NAME + "/" + MACHINE_ID + "/" + uid;
-  http.setTimeout(5000);
+  http.setReuse(true);
+  http.setTimeout(3000);
+
   if (!http.begin(client, url)) {
     Log.error("[tryLoginID] Failed to initialize HTTP client for URL: %s\n", url.c_str());
+    isHttpRequestInProgress = false;
     return 0;
   }
 
