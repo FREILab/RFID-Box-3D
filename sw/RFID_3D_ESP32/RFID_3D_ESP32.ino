@@ -115,7 +115,7 @@ void setup() {
   delay(100);
   Serial.println("Starting setup ...");
 
-  // Relais control output
+  // Relay control output
   pinMode(MACHINE_RELAY_PIN, OUTPUT);
 
   // LEDs pins
@@ -144,7 +144,7 @@ void setup() {
   // Initialize the RFID module
   initRFID();
 
-  // indicate sucessfull startup
+  // indicate successful startup
   delay(500);
   setLED_ryg(0, 0, 0);  // all off
   delay(100);
@@ -173,15 +173,15 @@ void next_State() {
       break;
     case IDENTIFICATION:
       if (auth_check) {
-        // when auth check was sucessful, start machine
+        // when auth check was successful, start machine
         nextState = RUNNING;
       } else {
-        // when auth check was not sucessful, return to reset state
+        // when auth check was not successful, return to reset state
         nextState = RESET;
       }
       break;
     case RUNNING:
-      // Differentiate if the machine need the RFID card connected constantly:
+      // Differentiate if the machine needs the RFID card connected constantly:
       if (RFIDCARD_AUTH_CONST == true) {
         // The card has to be connected constantly:
         if (digitalRead(BUTTON_STOP) == LOW || digitalRead(BUTTON_RFID) == HIGH) {
@@ -190,7 +190,7 @@ void next_State() {
         }
         break;
       } else if (RFIDCARD_AUTH_CONST == false) {
-        // Only a singhle sign-on is necessary:
+        // Only a single sign-on is necessary:
         if (digitalRead(BUTTON_STOP) == LOW) {
           // when Stop Button was pressed, change to reset state
           nextState = RESET;
@@ -209,7 +209,7 @@ void next_State() {
 
 void loop() {
 
-  // overwirite state with stop button
+  // overwrite state with stop button
   if (buttonStopPressed == true) {
     // reset flag
     buttonStopPressed = 0;
@@ -252,9 +252,9 @@ void loop() {
 
 void setLED_ryg(bool led_red, bool led_yellow, bool led_green) {
   Serial.printf("Setting LEDs - Red: %d, Yellow: %d, Green: %d\n", led_red, led_yellow, led_green);
-  digitalWrite(LED_RED_PIN, led_red);        // LED Test
-  digitalWrite(LED_YELLOW_PIN, led_yellow);  // LED Test
-  digitalWrite(LED_GREEN_PIN, led_green);    // LED Test
+  digitalWrite(LED_RED_PIN, led_red);
+  digitalWrite(LED_YELLOW_PIN, led_yellow);
+  digitalWrite(LED_GREEN_PIN, led_green);
 }
 
 /**
