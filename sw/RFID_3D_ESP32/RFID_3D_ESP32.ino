@@ -171,7 +171,7 @@ void next_State() {
       }
       break;
     case IDENTIFICATION:
-      if (auth_check) {
+      if (perform_auth_check()) {
         // when auth check was successful, start machine
         nextState = RUNNING;
       } else {
@@ -221,6 +221,9 @@ void loop() {
     nextState = RESET;
   }
 
+  // Check WiFi
+  checkWiFiConnection();
+
   switch (currentState) {
     case STANDBY:
       Serial.println("State: STANDBY");
@@ -268,22 +271,27 @@ void setLED_ryg(bool led_red, bool led_yellow, bool led_green) {
 void connectToWiFi() {
   WiFi.begin(ssid, pass);
   int retries = 0;
-  int retryDelay = 500;  // Start with 500ms delay
 
-  while ((WiFi.status() != WL_CONNECTED) && (retries < 10)) {
-    Serial.printf("WiFi connection attempt %d...\n", retries + 1);
-    delay(retryDelay);
+  while (WiFi.status() != WL_CONNECTED && retries < 10) {
+    Serial.printf("[connectToWiFi] Attempt %d...\n", retries + 1);
+    delay(1000);
     retries++;
-    retryDelay *= 2;  // Exponential backoff
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("[connectToWiFi] WiFi connected successfully.");
-    digitalWrite(LED_YELLOW_PIN, LOW);
+    Serial.println("[connectToWiFi] Connected to WiFi.");
   } else {
-    Serial.println("[connectToWiFi] WiFi connection failed after 10 attempts. Retrying in 30 sec...");
-    delay(30000);     // Wait before trying again instead of restarting
-    connectToWiFi();  // Retry connection
+    Serial.println("[connectToWiFi] Failed to connect. Retrying in background...");
+  }
+}
+
+/**
+ * @brief Checks WiFi network cooection.
+ */
+void checkWiFiConnection() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[checkWiFiConnection] WiFi disconnected! Reconnecting...");
+    connectToWiFi();
   }
 }
 
@@ -375,6 +383,7 @@ int tryLoginID(String uid) {
   if (!http.begin(client, url)) {
     Log.error("[tryLoginID] Failed to initialize HTTP client for URL: %s\n", url.c_str());
     isHttpRequestInProgress = false;
+    http.end();  // End HTTP connection
     return 0;
   }
 
