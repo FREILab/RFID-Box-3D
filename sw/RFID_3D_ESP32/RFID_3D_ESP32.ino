@@ -248,22 +248,22 @@ void loop() {
 
   switch (currentState) {
     case STANDBY:
+      digitalWrite(MACHINE_RELAY_PIN, LOW);
       setLED_ryg(0, 1, 0);
       break;
 
     case IDENTIFICATION:
+      digitalWrite(MACHINE_RELAY_PIN, LOW);
       setLED_ryg(0, 1, 1);
-      // Simulate authentication process
-      auth_check = (random(0, 2) == 1);  // Randomly set auth_check for testing
-      Log.notice(auth_check ? "Identification passed\n" : "Identification failed\n");
-
       break;
 
     case RUNNING:
+    digitalWrite(MACHINE_RELAY_PIN, HIGH);
       setLED_ryg(0, 0, 1);
       break;
 
     case RESET:
+      digitalWrite(MACHINE_RELAY_PIN, LOW);
       setLED_ryg(1, 0, 0);
       break;
   }
@@ -343,11 +343,11 @@ void initRFID() {
 bool perform_auth_check() {
   // Read the RFID card UID and attempt login
   uid = readID();
-  if (uid == 0) {
+  if (uid.equals("0")) {
     Log.error("[perform_auth_check] Reading UID failed, aborting login");
     return 0;
   }
-  Log.notice("[auth_check] Card UID: %s\n", uid.c_str());
+  Log.notice("[perform_auth_check] Card UID: %s\n", uid.c_str());
   // try authentification with the server
   return tryLoginID(uid);
 }
@@ -447,6 +447,16 @@ int tryLoginID(String uid) {
  */
 String readID() {
   Log.verbose("[readID] Attempt to Read RFID Card ... ");
+
+  // Perform self-test; restart ESP32 if initialization fails
+  if (!mfrc522.PCD_PerformSelfTest()) {
+    Log.error("[readID] RFID self-test failed. Restarting ESP32...\n");
+    delay(2000);
+    ESP.restart();
+  } else {
+    Log.notice("[initRFID] RFID reader initialized successfully.\n");
+  }
+
   for (int attempt = 0; attempt < 3; attempt++) {
     if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
       String uid = "";
@@ -458,7 +468,7 @@ String readID() {
       mfrc522.PCD_StopCrypto1();  // Stop encryption
       return uid;
     }
-    delay(100);
+    delay(500);
   }
   Log.error("[readID] No RFID card detected after multiple attempts.\n");
   return "0";
