@@ -19,19 +19,21 @@
 #include <HTTPClient.h>
 #include <SPI.h>
 #include "MFRC522.h"
-#include <ArduinoLog.h>  // Advanced logging library
-
-// Note: for flashing software the stop button has to be pressed
+#include <ArduinoLog.h>
 
 //------------------------------------------------------------------------------
-// State Definietions
+// State Definitions
 //------------------------------------------------------------------------------
 
+/**
+ * @enum State
+ * @brief Defines the different states of the RFID login system.
+ */
 enum State {
-  STANDBY,
-  IDENTIFICATION,
-  RUNNING,
-  RESET
+  STANDBY,        ///< System is idle, waiting for RFID input.
+  IDENTIFICATION, ///< System is verifying RFID credentials.
+  RUNNING,        ///< System is active, machine is running.
+  RESET          ///< System is resetting to standby state.
 };
 
 State currentState = STANDBY;
@@ -44,34 +46,37 @@ const unsigned long STATE_DELAY = 500;  // 500ms delay before transition
 // Pin Definitions
 //------------------------------------------------------------------------------
 
-#define MACHINE_RELAY_PIN 22  // Pin controlling the machine relay
-#define BUTTON_RFID 4         // Button to stop machine / Taster 1
-#define BUTTON_STOP 13        // Button to start machine / Taster 2
+#define MACHINE_RELAY_PIN 22  ///< Pin controlling the machine relay
+#define BUTTON_RFID 4         ///< Button to stop machine / Taster 1
+#define BUTTON_STOP 13        ///< Button to start machine / Taster 2
 
-#define RFID_RST_PIN 5  // Reset pin for the RFID module
-#define RFID_SS_PIN 21  // SDA pin for the RFID module
+#define RFID_RST_PIN 5  ///< Reset pin for the RFID module
+#define RFID_SS_PIN 21  ///< SDA pin for the RFID module
 
-#define LED_RED_PIN 32     // Pin for red LED
-#define LED_YELLOW_PIN 33  // Pin for yellow LED
-#define LED_GREEN_PIN 26   // Pin for green LED
+#define LED_RED_PIN 32     ///< Pin for red LED
+#define LED_YELLOW_PIN 33  ///< Pin for yellow LED
+#define LED_GREEN_PIN 26   ///< Pin for green LED
 
 //------------------------------------------------------------------------------
 // Interrupt Service routines
 //------------------------------------------------------------------------------
 
-// current button state; have to be reset after been read
-volatile bool buttonStopPressed = false;
+volatile bool buttonStopPressed = false; ///< Flag for stop button press
 
-// Motex
-portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED; ///< Mutex for interrupt safety
 
+/**
+ * @brief Interrupt handler for the stop button press.
+ *
+ * Sets the flag when the button is pressed.
+ */
 void IRAM_ATTR handleButtonStopFalling() {
   portENTER_CRITICAL_ISR(&mux);
   buttonStopPressed = true;
   portEXIT_CRITICAL_ISR(&mux);
 }
 
-const int TIME_DEBOUNCE = 100;  // 100 ms button debounce
+const int TIME_DEBOUNCE = 100;  ///< 100 ms button debounce time
 
 //------------------------------------------------------------------------------
 // WiFi Credentials (from config_3D.h)
@@ -82,25 +87,26 @@ const char *pass = WIFI_PASSWORD;
 //------------------------------------------------------------------------------
 // Global Variables and Instances
 //------------------------------------------------------------------------------
-// Instantiate the RFID module
-MFRC522 mfrc522(RFID_SS_PIN, RFID_RST_PIN);
+MFRC522 mfrc522(RFID_SS_PIN, RFID_RST_PIN); ///< Instance of the RFID module
 
-// State of ouput switch
-volatile bool machineRunning = false;
+volatile bool machineRunning = false; ///< Tracks machine running state
 
-// Global variables for tracking state
-String loggedInID = "0";     // Currently logged-in RFID card ID
-String uid = "";             // UID read from an RFID card
-int loginUpdateCounter = 0;  // Counter to trigger session extension
+String loggedInID = "0";     ///< Currently logged-in RFID card ID
+String uid = "";             ///< UID read from an RFID card
+int loginUpdateCounter = 0;  ///< Counter to trigger session extension
 
-bool loginState = LOW;  // Flag indicating if login was successful
+bool loginState = LOW; ///< Flag indicating if login was successful
 
-bool isHttpRequestInProgress = false;        // Flag to indicate an ongoing HTTP request
-bool isCardAuthConst = RFIDCARD_AUTH_CONST;  // Constant for card authentication
+bool isHttpRequestInProgress = false; ///< Flag to indicate an ongoing HTTP request
+bool isCardAuthConst = RFIDCARD_AUTH_CONST; ///< Constant for card authentication
 
 //------------------------------------------------------------------------------
-// Setup
+// Setup Function
 //------------------------------------------------------------------------------
+
+/**
+ * @brief Initializes hardware, connects to WiFi, and sets up the RFID module.
+ */
 
 void setup() {
   // For serial debug
@@ -154,41 +160,46 @@ void setup() {
 }
 
 
-
+/**
+ * @brief Handles state transitions based on system inputs.
+ */
 void next_State() {
   switch (currentState) {
     case STANDBY:
       if (digitalRead(BUTTON_RFID) == LOW) {
+        // when the RFID card is entered, proceed with identification
         nextState = IDENTIFICATION;
       }
       break;
-
     case IDENTIFICATION:
       if (auth_check) {
+        // when auth check was sucessful, start machine
         nextState = RUNNING;
       } else {
+        // when auth check was not sucessful, return to reset state
         nextState = RESET;
       }
       break;
-
     case RUNNING:
       // Differentiate if the machine need the RFID card connected constantly:
       if (RFIDCARD_AUTH_CONST == true) {
         // The card has to be connected constantly:
         if (digitalRead(BUTTON_STOP) == LOW || digitalRead(BUTTON_RFID) == HIGH) {
+          // when Stop Button was pressed or RFID card was removed, change to reset state
           nextState = RESET;
         }
         break;
       } else if (RFIDCARD_AUTH_CONST == false) {
         // Only a singhle sign-on is necessary:
         if (digitalRead(BUTTON_STOP) == LOW) {
+          // when Stop Button was pressed, change to reset state
           nextState = RESET;
         }
         break;
       }
-
     case RESET:
       if ((digitalRead(BUTTON_RFID) == HIGH) && (digitalRead(BUTTON_STOP) == HIGH)) {
+        // when both buttons are inactive, change to standby state
         nextState = STANDBY;
       }
       break;
@@ -248,8 +259,6 @@ void setLED_ryg(bool led_red, bool led_yellow, bool led_green) {
 
 /**
  * @brief Connects the ESP32 to the WiFi network.
- *
- * Attempts to establish a connection up to 10 times.
  */
 void connectToWiFi() {
   WiFi.begin(ssid, pass);
@@ -274,10 +283,7 @@ void connectToWiFi() {
 }
 
 /**
- * @brief Initializes the RFID module.
- *
- * Starts SPI communication and performs a self-test on the RFID reader.
- * If the self-test fails, the ESP32 restarts.
+ * @brief Initializes the RFID module and performs a self-test.
  */
 void initRFID() {
   Serial.println("[initRFID] Setting up SPI ... ");
