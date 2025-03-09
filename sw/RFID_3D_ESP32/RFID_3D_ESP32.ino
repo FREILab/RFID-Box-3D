@@ -308,3 +308,197 @@ void initRFID() {
     Serial.println("[initRFID] RFID reader initialized successfully.\n");
   }
 }
+
+
+/**
+ * @brief Updates the login session by sending a session extension request.
+ *
+ * Increments a counter and sends an HTTP GET request to extend the session when the threshold is reached.
+ */
+void updateLogin() {
+  // Reset LED statuses
+  //digitalWrite(LED_RED, LOW);
+  //digitalWrite(LED_YELLOW, LOW);
+
+  // Increment counter and check threshold
+  loginUpdateCounter++;
+  if (loginUpdateCounter < 200) {
+    return;
+  }
+  loginUpdateCounter = 0;  // Reset counter
+
+  HTTPClient http;
+  WiFiClient client;
+
+  Log.info("[updateLogin] Sending session extension request...\n");
+
+  if (isHttpRequestInProgress) {
+    Log.warning("[updateLogin] HTTP request already in progress. Skipping session update.\n");
+    return;
+  }
+
+  // Construct URL for session extension request
+  String url = "http://" + String(SERVER_IP) + "/machine_extend_login/" + AUTHENTICATION_TOKEN + "/" + MACHINE_NAME;
+  http.setTimeout(5000);
+  if (!http.begin(client, url)) {
+    Log.error("[updateLogin] Failed to initialize HTTP client for URL: %s\n", url.c_str());
+    return;
+  }
+
+  Log.info("[updateLogin] Sending HTTP GET request for session extension...\n");
+  int httpCode = http.GET();
+
+  if (httpCode > 0) {  // HTTP request succeeded
+    Log.verbose("[updateLogin] HTTP GET returned code: %d\n", httpCode);
+
+    if (httpCode == HTTP_CODE_OK) {  // 200 OK
+      String payload = http.getString();
+      Log.verbose("[updateLogin] Server response: %s\n", payload.c_str());
+    }
+  } else {
+    // HTTP GET failed; log error details and indicate failure with LEDs
+    Log.error("[updateLogin] HTTP GET failed: %s\n", http.errorToString(httpCode).c_str());
+    //digitalWrite(LED_RED, HIGH);
+    //digitalWrite(LED_YELLOW, HIGH);
+  }
+
+  http.end();  // End HTTP connection
+  isHttpRequestInProgress = false;
+  Log.verbose("[updateLogin] HTTP connection closed.\n");
+}
+
+/**
+ * @brief Handles login
+ *
+ * In this mode, the main switch (active low) triggers:
+ *   - Login when the button is pressed.
+ *   - Logout automatically when the button is released.
+ */
+bool perform_auth_check() {
+  // Read the RFID card UID and attempt login
+  uid = readID();
+  Log.notice("[auth_check] Card UID: %s\n", uid.c_str());
+  // try authentification with the server
+  return tryLoginID(uid);
+}
+
+/**
+ * @brief Attempts to log in using the provided RFID card UID.
+ *
+ * Sends an HTTP GET request to the server for authentication.
+ * Updates LED status based on the server response.
+ *
+ * @param uid The RFID card UID.
+ */
+int tryLoginID(String uid) {
+
+  // return value: 0 = failed, 1=success, -1=busy
+  bool authentication_success = 0;
+
+  // Indicate login attempt: turn on yellow LED and ensure red LED is off
+  // digitalWrite(LED_YELLOW, HIGH);
+  // digitalWrite(LED_RED, LOW);
+
+  HTTPClient http;
+  WiFiClient client;
+
+  // DEBUG ++++++++++++++ start ++++++++++++++++++++++++++++++++++++++++++++
+  /*
+  Log.verbose("[tryLoginID] Circumvent Auth; force sucessful login.\n");
+  loginState = HIGH;  //TODO: DEBUG
+  Log.notice("[tryLoginID] Login successful. UID: %s\n", uid.c_str());
+  Log.notice("[tryLoginID] Enabling Output.\n");
+  digitalWrite(LED_YELLOW, LOW);   // Turn off yellow LED
+  digitalWrite(LED_GREEN, HIGH);   // Indicate success with green LED
+  digitalWrite(RELAIS_PIN, HIGH);  // Activate relais pin
+  return;*/
+
+  // DEBUG ++++++++++++++ end ++++++++++++++++++++++++++++++++++++++++++++++
+
+  // Avoid duplicate HTTP requests
+  if (isHttpRequestInProgress) {
+    Log.warning("[tryLoginID] HTTP request already in progress. Skipping login attempt.\n");
+    return -1;
+  }
+
+  Log.info("[tryLoginID] Initiating login request...\n");
+
+  // Construct URL for login request
+  String url = "http://" + String(SERVER_IP) + "/machine_try_login/" + AUTHENTICATION_TOKEN + "/" + MACHINE_NAME + "/" + MACHINE_ID + "/" + uid;
+  http.setTimeout(5000);
+  if (!http.begin(client, url)) {
+    Log.error("[tryLoginID] Failed to initialize HTTP client for URL: %s\n", url.c_str());
+    return 0;
+  }
+
+  Log.info("[tryLoginID] Sending HTTP GET request for login...\n");
+  int httpCode = http.GET();
+
+  if (httpCode > 0) {  // HTTP request successful
+    Log.verbose("[tryLoginID] HTTP GET returned code: %d\n", httpCode);
+
+    if (httpCode == HTTP_CODE_OK) {  // 200 OK
+      String payload = http.getString();
+      Log.verbose("[tryLoginID] Server response: %s\n", payload.c_str());
+
+      if (payload.indexOf("true") >= 0) {
+        loggedInID = uid;
+        Log.notice("[tryLoginID] Login successful. UID: %s\n", uid.c_str());
+        authentication_success = 1;
+      } else {
+        Log.error("[tryLoginID] Login failed. Server response did not confirm login.\n");
+        authentication_success = 0;
+      }
+    }
+  } else {
+    // HTTP GET failed; log the error details
+    Log.error("[tryLoginID] HTTP GET failed: %s\n", http.errorToString(httpCode).c_str());
+    authentication_success = 0;
+  }
+
+  http.end();  // End HTTP connection
+  isHttpRequestInProgress = false;
+  Log.verbose("[tryLoginID] HTTP connection closed.\n");
+
+  return authentication_success;
+}
+
+/**
+ * @brief Reads the RFID card UID.
+ *
+ * Attempts to read an RFID card up to 3 times.
+ *
+ * @return A String representing the UID in hexadecimal format, or "0" if no card is found.
+ */
+String readID() {
+  Log.verbose("[initRFID] Setting up RFID Module ... ");
+  mfrc522.PCD_Init();  // Reinitialize the RFID module
+  Log.verbose("done.\n");
+
+  Log.verbose("[initRFID] Reading UID:\n");
+
+  // Attempt to read the card up to 3 times
+  for (int i = 0; i < 3; i++) {
+    if (mfrc522.PICC_IsNewCardPresent()) {
+      if (mfrc522.PICC_ReadCardSerial()) {
+        String uid = "";
+        // Process each byte of the UID
+        for (byte i = 0; i < mfrc522.uid.size; i++) {
+          if (i != 0) {
+            uid += ":";  // Use colon as a delimiter
+          }
+          int byteVal = mfrc522.uid.uidByte[i];
+          uid += (byteVal < 16 ? "0" : "") + String(byteVal, 16);
+        }
+        if (uid.isEmpty()) {
+          Log.error("[readID] UID is empty. Aborting login.\n");
+          return "0";
+        }
+        return uid;
+      }
+    }
+    delay(100);  // Delay between attempts
+  }
+  Log.warning("[readID] No RFID card detected after multiple attempts.\n");
+  return "0";  // Return "0" if no card is detected
+}
