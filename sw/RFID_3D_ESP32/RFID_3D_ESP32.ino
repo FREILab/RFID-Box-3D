@@ -30,10 +30,10 @@
  * @brief Defines the different states of the RFID login system.
  */
 enum State {
-  STANDBY,        ///< System is idle, waiting for RFID input.
-  IDENTIFICATION, ///< System is verifying RFID credentials.
-  RUNNING,        ///< System is active, machine is running.
-  RESET          ///< System is resetting to standby state.
+  STANDBY,         ///< System is idle, waiting for RFID input.
+  IDENTIFICATION,  ///< System is verifying RFID credentials.
+  RUNNING,         ///< System is active, machine is running.
+  RESET            ///< System is resetting to standby state.
 };
 
 State currentState = STANDBY;
@@ -60,9 +60,9 @@ unsigned long stateChangeTime = 0;
 // Interrupt Service routines
 //------------------------------------------------------------------------------
 
-volatile bool buttonStopPressed = false; ///< Flag for stop button press
+volatile bool buttonStopPressed = false;  ///< Flag for stop button press
 
-portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED; ///< Mutex for interrupt safety
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;  ///< Mutex for interrupt safety
 
 /**
  * @brief Interrupt handler for the stop button press.
@@ -86,18 +86,18 @@ const char *pass = WIFI_PASSWORD;
 //------------------------------------------------------------------------------
 // Global Variables and Instances
 //------------------------------------------------------------------------------
-MFRC522 mfrc522(RFID_SS_PIN, RFID_RST_PIN); ///< Instance of the RFID module
+MFRC522 mfrc522(RFID_SS_PIN, RFID_RST_PIN);  ///< Instance of the RFID module
 
-volatile bool machineRunning = false; ///< Tracks machine running state
+volatile bool machineRunning = false;  ///< Tracks machine running state
 
 String loggedInID = "0";     ///< Currently logged-in RFID card ID
 String uid = "";             ///< UID read from an RFID card
 int loginUpdateCounter = 0;  ///< Counter to trigger session extension
 
-bool loginState = LOW; ///< Flag indicating if login was successful
+bool loginState = LOW;  ///< Flag indicating if login was successful
 
-bool isHttpRequestInProgress = false; ///< Flag to indicate an ongoing HTTP request
-bool isCardAuthConst = RFIDCARD_AUTH_CONST; ///< Constant for card authentication
+bool isHttpRequestInProgress = false;        ///< Flag to indicate an ongoing HTTP request
+bool isCardAuthConst = RFIDCARD_AUTH_CONST;  ///< Constant for card authentication
 
 //------------------------------------------------------------------------------
 // Setup Function
@@ -109,8 +109,8 @@ bool isCardAuthConst = RFIDCARD_AUTH_CONST; ///< Constant for card authenticatio
 
 void setup() {
 
-  Log.begin(LOG_LEVEL_VERBOSE, &Serial); // Initialize logging
-  
+  Log.begin(LOG_LEVEL_VERBOSE, &Serial);  // Initialize logging
+
   // For serial debug
   Serial.begin(115200);
 
@@ -209,13 +209,31 @@ void next_State() {
   }
 
   if (currentState != nextState) {
-    // slow down transistion and debounce switches
+    // Slow down transition and debounce switches
     delay(TIME_DEBOUNCE);
+
+    switch (nextState) {
+      case STANDBY:
+        Log.verbose("[next_State] Next State: STANDBY\n");
+        break;
+      case IDENTIFICATION:
+        Log.verbose("[next_State] Next State: IDENTIFICATION\n");
+        break;
+      case RUNNING:
+        Log.verbose("[next_State] Next State: RUNNING\n");
+        break;
+      case RESET:
+        Log.verbose("[next_State] Next State: RESET\n");
+        break;
+    }
   }
 
   currentState = nextState;
 }
 
+/**
+ * @brief Main Loop
+ */
 void loop() {
 
   // overwrite state with stop button
@@ -230,12 +248,10 @@ void loop() {
 
   switch (currentState) {
     case STANDBY:
-      Log.notice("State: STANDBY\n");
       setLED_ryg(0, 1, 0);
       break;
 
     case IDENTIFICATION:
-      Log.notice("State: IDENTIFICATION\n");
       setLED_ryg(0, 1, 1);
       // Simulate authentication process
       auth_check = (random(0, 2) == 1);  // Randomly set auth_check for testing
@@ -244,13 +260,10 @@ void loop() {
       break;
 
     case RUNNING:
-      Serial.println("State: RUNNING");
       setLED_ryg(0, 0, 1);
       break;
 
     case RESET:
-      Serial.println("State: RESET");
-      Log.notice("State: RESET\n");
       setLED_ryg(1, 0, 0);
       break;
   }
@@ -259,8 +272,11 @@ void loop() {
   delay(100);  // Small delay for stability
 }
 
+/**
+ * @brief Set external LEDs
+ */
 void setLED_ryg(bool led_red, bool led_yellow, bool led_green) {
-  Log.verbose("Setting LEDs - Red: %d, Yellow: %d, Green: %d\n", led_red, led_yellow, led_green);
+  //Log.verbose("Setting LEDs - Red: %d, Yellow: %d, Green: %d\n", led_red, led_yellow, led_green);
   digitalWrite(LED_RED_PIN, led_red);
   digitalWrite(LED_YELLOW_PIN, led_yellow);
   digitalWrite(LED_GREEN_PIN, led_green);
@@ -327,6 +343,10 @@ void initRFID() {
 bool perform_auth_check() {
   // Read the RFID card UID and attempt login
   uid = readID();
+  if (uid == 0) {
+    Log.error("[perform_auth_check] Reading UID failed, aborting login");
+    return 0;
+  }
   Log.notice("[auth_check] Card UID: %s\n", uid.c_str());
   // try authentification with the server
   return tryLoginID(uid);
@@ -349,7 +369,7 @@ int tryLoginID(String uid) {
   // digitalWrite(LED_YELLOW, HIGH);
   // digitalWrite(LED_RED, LOW);
 
-  static HTTPClient http;  
+  static HTTPClient http;
   static WiFiClient client;
 
   // DEBUG ++++++++++++++ start ++++++++++++++++++++++++++++++++++++++++++++
@@ -434,8 +454,8 @@ String readID() {
         uid += (mfrc522.uid.uidByte[i] < 16 ? "0" : "") + String(mfrc522.uid.uidByte[i], 16);
         if (i < mfrc522.uid.size - 1) uid += ":";
       }
-      mfrc522.PICC_HaltA();  // Halt the RFID card
-      mfrc522.PCD_StopCrypto1(); // Stop encryption
+      mfrc522.PICC_HaltA();       // Halt the RFID card
+      mfrc522.PCD_StopCrypto1();  // Stop encryption
       return uid;
     }
     delay(100);
