@@ -471,34 +471,20 @@ int tryLoginID(String uid) {
  * @return A String representing the UID in hexadecimal format, or "0" if no card is found.
  */
 String readID() {
-  Log.verbose("[initRFID] Setting up RFID Module ... ");
-  mfrc522.PCD_Init();  // Reinitialize the RFID module
-  Log.verbose("done.\n");
-
-  Log.verbose("[initRFID] Reading UID:\n");
-
-  // Attempt to read the card up to 3 times
-  for (int i = 0; i < 3; i++) {
-    if (mfrc522.PICC_IsNewCardPresent()) {
-      if (mfrc522.PICC_ReadCardSerial()) {
-        String uid = "";
-        // Process each byte of the UID
-        for (byte i = 0; i < mfrc522.uid.size; i++) {
-          if (i != 0) {
-            uid += ":";  // Use colon as a delimiter
-          }
-          int byteVal = mfrc522.uid.uidByte[i];
-          uid += (byteVal < 16 ? "0" : "") + String(byteVal, 16);
-        }
-        if (uid.isEmpty()) {
-          Log.error("[readID] UID is empty. Aborting login.\n");
-          return "0";
-        }
-        return uid;
+  Log.verbose("[readID] Attempt to Read RFID Card ... ");
+  for (int attempt = 0; attempt < 3; attempt++) {
+    if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
+      String uid = "";
+      for (byte i = 0; i < mfrc522.uid.size; i++) {
+        uid += (mfrc522.uid.uidByte[i] < 16 ? "0" : "") + String(mfrc522.uid.uidByte[i], 16);
+        if (i < mfrc522.uid.size - 1) uid += ":";
       }
+      mfrc522.PICC_HaltA();  // Halt the RFID card
+      mfrc522.PCD_StopCrypto1(); // Stop encryption
+      return uid;
     }
-    delay(100);  // Delay between attempts
+    delay(100);
   }
-  Log.warning("[readID] No RFID card detected after multiple attempts.\n");
-  return "0";  // Return "0" if no card is detected
+  Log.error("[readID] No RFID card detected after multiple attempts.\n");
+  return "0";
 }
