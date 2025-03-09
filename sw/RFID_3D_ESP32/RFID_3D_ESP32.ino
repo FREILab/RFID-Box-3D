@@ -108,11 +108,15 @@ bool isCardAuthConst = RFIDCARD_AUTH_CONST; ///< Constant for card authenticatio
  */
 
 void setup() {
+
+  Log.begin(LOG_LEVEL_VERBOSE, &Serial); // Initialize logging
+  
   // For serial debug
   Serial.begin(115200);
 
   delay(100);
-  Serial.println("Starting setup ...");
+
+  Log.notice("Starting setup ...\n");
 
   // Relay control output
   pinMode(MACHINE_RELAY_PIN, OUTPUT);
@@ -155,7 +159,7 @@ void setup() {
   delay(100);
   setLED_ryg(0, 0, 0);  // all off
 
-  Serial.println("Setup complete.");
+  Log.notice("Setup complete.\n");
 }
 
 
@@ -226,20 +230,16 @@ void loop() {
 
   switch (currentState) {
     case STANDBY:
-      Serial.println("State: STANDBY");
+      Log.notice("State: STANDBY\n");
       setLED_ryg(0, 1, 0);
       break;
 
     case IDENTIFICATION:
-      Serial.println("State: IDENTIFICATION");
+      Log.notice("State: IDENTIFICATION\n");
       setLED_ryg(0, 1, 1);
       // Simulate authentication process
       auth_check = (random(0, 2) == 1);  // Randomly set auth_check for testing
-      if (auth_check == 0) {
-        Serial.println("Identification failed");
-      } else if (auth_check == 1) {
-        Serial.println("Identification passed");
-      }
+      Log.notice(auth_check ? "Identification passed\n" : "Identification failed\n");
 
       break;
 
@@ -250,6 +250,7 @@ void loop() {
 
     case RESET:
       Serial.println("State: RESET");
+      Log.notice("State: RESET\n");
       setLED_ryg(1, 0, 0);
       break;
   }
@@ -259,7 +260,7 @@ void loop() {
 }
 
 void setLED_ryg(bool led_red, bool led_yellow, bool led_green) {
-  Serial.printf("Setting LEDs - Red: %d, Yellow: %d, Green: %d\n", led_red, led_yellow, led_green);
+  Log.verbose("Setting LEDs - Red: %d, Yellow: %d, Green: %d\n", led_red, led_yellow, led_green);
   digitalWrite(LED_RED_PIN, led_red);
   digitalWrite(LED_YELLOW_PIN, led_yellow);
   digitalWrite(LED_GREEN_PIN, led_green);
@@ -273,15 +274,15 @@ void connectToWiFi() {
   int retries = 0;
 
   while (WiFi.status() != WL_CONNECTED && retries < 10) {
-    Serial.printf("[connectToWiFi] Attempt %d...\n", retries + 1);
+    Log.notice("[connectToWiFi] Attempt %d...\n", retries + 1);
     delay(1000);
     retries++;
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("[connectToWiFi] Connected to WiFi.");
+    Log.notice("[connectToWiFi] Connected to WiFi.\n");
   } else {
-    Serial.println("[connectToWiFi] Failed to connect. Retrying in background...");
+    Log.warning("[connectToWiFi] WiFi disconnected! Reconnecting...\n");
   }
 }
 
@@ -290,7 +291,7 @@ void connectToWiFi() {
  */
 void checkWiFiConnection() {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("[checkWiFiConnection] WiFi disconnected! Reconnecting...");
+    Log.warning("[checkWiFiConnection] WiFi disconnected! Reconnecting...\n");
     connectToWiFi();
   }
 }
@@ -299,21 +300,19 @@ void checkWiFiConnection() {
  * @brief Initializes the RFID module and performs a self-test.
  */
 void initRFID() {
-  Serial.println("[initRFID] Setting up SPI ... ");
+  Log.notice("[initRFID] Setting up SPI...\n");
   SPI.begin();  // Start SPI communication
-  Serial.println("done.\n");
 
-  Serial.println("[initRFID] Setting up RFID Module ... ");
+  Log.notice("[initRFID] Setting up RFID Module ...\n");
   mfrc522.PCD_Init();  // Initialize RFID module
-  Serial.println("done.\n");
 
   // Perform self-test; restart ESP32 if initialization fails
   if (!mfrc522.PCD_PerformSelfTest()) {
-    Serial.println("[initRFID] RFID self-test failed. Restarting ESP32...\n");
+    Log.error("[initRFID] RFID self-test failed. Restarting ESP32...\n");
     delay(2000);
-    ESP.restart();  // TODO might be problem
+    ESP.restart();
   } else {
-    Serial.println("[initRFID] RFID reader initialized successfully.\n");
+    Log.notice("[initRFID] RFID reader initialized successfully.\n");
   }
 }
 
