@@ -40,7 +40,6 @@ State currentState = STANDBY;
 State nextState = STANDBY;
 bool auth_check = true;
 unsigned long stateChangeTime = 0;
-const unsigned long STATE_DELAY = 500;  // 500ms delay before transition
 
 //------------------------------------------------------------------------------
 // Pin Definitions
@@ -204,6 +203,12 @@ void next_State() {
       }
       break;
   }
+
+  if (currentState != nextState) {
+    // slow down transistion and debounce switches
+    delay(TIME_DEBOUNCE);
+  }
+
   currentState = nextState;
 }
 
