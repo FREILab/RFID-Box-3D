@@ -452,7 +452,7 @@ String readID() {
   if (!mfrc522.PCD_PerformSelfTest()) {
     Log.error("[readID] RFID self-test failed. Restarting ESP32...\n");
     delay(2000);
-    ESP.restart();
+    // ESP.restart();
   } else {
     Log.notice("[initRFID] RFID reader initialized successfully.\n");
   }
