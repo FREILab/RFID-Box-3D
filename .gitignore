@@ -54,3 +54,4 @@ dkms.conf
 .DS_Store
 /hardware/PCB/production/backups
 /hardware/PCB/RFID_Platine-backups
+/hw/PCB/RFID_Platine-backups/*
