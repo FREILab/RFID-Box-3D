@@ -75,7 +75,8 @@ void IRAM_ATTR handleButtonStopFalling() {
   portEXIT_CRITICAL_ISR(&mux);
 }
 
-const int TIME_DEBOUNCE = 100;  ///< 100 ms button debounce time
+const int TIME_GLITCH_FILTER_STOP = 1000;  ///< 1s button debounce time
+const int TIME_GLITCH_FILTER_RFID = 3000; ///< 3s button debounce time
 
 //------------------------------------------------------------------------------
 // WiFi Credentials (from config_3D.h)
@@ -167,6 +168,13 @@ void setup() {
  * @brief Handles state transitions based on system inputs.
  */
 void next_State() {
+
+  //Glich filter variables for RFID button
+  static unsigned long rfidButtonPressTime = 0;
+  static bool rfidButtonTimerActive = false;
+  static unsigned long stopButtonPressTime = 0;
+  static bool stopButtonTimerActive = false;
+
   switch (currentState) {
     case STANDBY:
       if (digitalRead(BUTTON_RFID) == LOW) {
@@ -187,16 +195,50 @@ void next_State() {
       // Differentiate if the machine needs the RFID card connected constantly:
       if (RFIDCARD_AUTH_CONST == true) {
         // The card has to be connected constantly:
-        if (digitalRead(BUTTON_STOP) == LOW || digitalRead(BUTTON_RFID) == HIGH) {
-          // when Stop Button was pressed or RFID card was removed, change to reset state
-          nextState = RESET;
+        if (digitalRead(BUTTON_STOP) == LOW) {
+          // Start the timer if not already active
+          if (!stopButtonTimerActive) {
+            stopButtonPressTime = millis();
+            stopButtonTimerActive = true;
+          }
+          // If BUTTON_STOP has been LOW for at least 1s, enter RESET state
+          if (millis() - stopButtonPressTime >= TIME_GLITCH_FILTER_STOP) {
+            nextState = RESET;
+          }
+        }  else {
+          // Reset the timer if BUTTON_STOP goes HIGH
+          stopButtonTimerActive = false;
+        }
+        if (digitalRead(BUTTON_RFID) == HIGH) {
+          // Start the timer if not already active
+          if (!rfidButtonTimerActive) {
+            rfidButtonPressTime = millis();
+            rfidButtonTimerActive = true;
+          }
+          // If BUTTON_RFID has been HIGH for at least 3 seconds, enter RESET state
+          if (millis() - rfidButtonPressTime >= TIME_GLITCH_FILTER_RFID) {
+            nextState = RESET;
+          }
+        } else {
+          // Reset the timer if BUTTON_RFID goes LOW
+          rfidButtonTimerActive = false;
         }
         break;
       } else if (RFIDCARD_AUTH_CONST == false) {
         // Only a single sign-on is necessary:
         if (digitalRead(BUTTON_STOP) == LOW) {
-          // when Stop Button was pressed, change to reset state
-          nextState = RESET;
+          // Start the timer if not already active
+          if (!stopButtonTimerActive) {
+            stopButtonPressTime = millis();
+            stopButtonTimerActive = true;
+          }
+          // If BUTTON_STOP has been LOW for at least 1s, enter RESET state
+          if (millis() - stopButtonPressTime >= TIME_GLITCH_FILTER_RFID) {
+            nextState = RESET;
+          }
+        } else {
+          // Reset the timer if BUTTON_STOP goes HIGH
+          stopButtonTimerActive = false;
         }
         break;
       }
@@ -210,7 +252,7 @@ void next_State() {
 
   if (currentState != nextState) {
     // Slow down transition and debounce switches
-    delay(TIME_DEBOUNCE);
+    delay(TIME_GLITCH_FILTER_STOP);
 
     switch (nextState) {
       case STANDBY:
