@@ -69,7 +69,7 @@ portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;  ///< Mutex for interrupt safet
  *
  * Sets the flag when the button is pressed.
  */
-void IRAM_ATTR handleButtonStopRising() {
+void IRAM_ATTR handleButtonStopFalling() {
   portENTER_CRITICAL_ISR(&mux);
   buttonStopPressed = true;
   portEXIT_CRITICAL_ISR(&mux);
@@ -139,7 +139,7 @@ void setup() {
 
   delay(1000);  // wait for pullups to get active
 
-  attachInterrupt(digitalPinToInterrupt(BUTTON_STOP), handleButtonStopRising, RISING);
+  attachInterrupt(digitalPinToInterrupt(BUTTON_STOP), handleButtonStopFalling, FALLING);
 
   // Connect to WiFi
   connectToWiFi();
@@ -187,21 +187,21 @@ void next_State() {
       // Differentiate if the machine needs the RFID card connected constantly:
       if (RFIDCARD_AUTH_CONST == true) {
         // The card has to be connected constantly:
-        if (digitalRead(BUTTON_STOP) == HIGH || digitalRead(BUTTON_RFID) == HIGH) {
+        if (digitalRead(BUTTON_STOP) == LOW || digitalRead(BUTTON_RFID) == HIGH) {
           // when Stop Button was pressed or RFID card was removed, change to reset state
           nextState = RESET;
         }
         break;
       } else if (RFIDCARD_AUTH_CONST == false) {
         // Only a single sign-on is necessary:
-        if (digitalRead(BUTTON_STOP) == HIGH) {
+        if (digitalRead(BUTTON_STOP) == LOW) {
           // when Stop Button was pressed, change to reset state
           nextState = RESET;
         }
         break;
       }
     case RESET:
-      if ((digitalRead(BUTTON_RFID) == HIGH) && (digitalRead(BUTTON_STOP) == LOW)) {
+      if ((digitalRead(BUTTON_RFID) == HIGH) && (digitalRead(BUTTON_STOP) == HIGH)) {
         // when both buttons are inactive, change to standby state
         nextState = STANDBY;
       }
