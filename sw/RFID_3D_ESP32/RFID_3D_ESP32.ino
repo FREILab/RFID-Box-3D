@@ -75,7 +75,7 @@ void IRAM_ATTR handleButtonStopFalling() {
   portEXIT_CRITICAL_ISR(&mux);
 }
 
-const int TIME_GLITCH_FILTER_STOP = 1000;  ///< 1s button debounce time
+const int TIME_GLITCH_FILTER_STOP = 500;  ///< 0.5s button debounce time
 const int TIME_GLITCH_FILTER_RFID = 3000; ///< 3s button debounce time
 
 //------------------------------------------------------------------------------
