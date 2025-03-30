@@ -56,6 +56,8 @@ unsigned long stateChangeTime = 0;
 #define LED_YELLOW_PIN 33  ///< Pin for yellow LED
 #define LED_GREEN_PIN 26   ///< Pin for green LED
 
+#define BUTTON_PRESSED 0   ///< Buttons active low
+
 //------------------------------------------------------------------------------
 // Interrupt Service routines
 //------------------------------------------------------------------------------
@@ -160,6 +162,8 @@ void setup() {
   delay(100);
   setLED_ryg(0, 0, 0);  // all off
 
+  buttonStopPressed = false;
+
   Log.notice("Setup complete.\n");
 }
 
@@ -177,7 +181,7 @@ void next_State() {
 
   switch (currentState) {
     case STANDBY:
-      if (digitalRead(BUTTON_RFID) == LOW) {
+      if (digitalRead(BUTTON_RFID) == BUTTON_PRESSED) {
         // when the RFID card is entered, proceed with identification
         nextState = IDENTIFICATION;
       }
@@ -189,6 +193,7 @@ void next_State() {
         delay(500); // Allow some buffer time before transitioning to RUNNING
       } else {
         // when auth check was not successful, return to reset state
+        Log.verbose("[next_State] Identification not sucessful.\n");
         nextState = RESET;
       }
       break;
@@ -196,7 +201,7 @@ void next_State() {
       // Differentiate if the machine needs the RFID card connected constantly:
       if (RFIDCARD_AUTH_CONST == true) {
         // The card has to be connected constantly:
-        if (digitalRead(BUTTON_STOP) == LOW) {
+        if (digitalRead(BUTTON_STOP) == BUTTON_PRESSED) {
           // Start the timer if not already active
           if (!stopButtonTimerActive) {
             stopButtonPressTime = millis();
@@ -204,13 +209,14 @@ void next_State() {
           }
           // If BUTTON_STOP has been LOW for at least 1s, enter RESET state
           if (millis() - stopButtonPressTime >= TIME_GLITCH_FILTER_STOP) {
+            Log.verbose("[next_State] Stop button pressed.\n");
             nextState = RESET;
           }
         }  else {
           // Reset the timer if BUTTON_STOP goes HIGH
           stopButtonTimerActive = false;
         }
-        if (digitalRead(BUTTON_RFID) == HIGH) {
+        if (digitalRead(BUTTON_RFID) == BUTTON_PRESSED) {
           // Start the timer if not already active
           if (!rfidButtonTimerActive) {
             rfidButtonPressTime = millis();
@@ -218,6 +224,7 @@ void next_State() {
           }
           // If BUTTON_RFID has been HIGH for at least 3 seconds, enter RESET state
           if (millis() - rfidButtonPressTime >= TIME_GLITCH_FILTER_RFID) {
+            Log.verbose("[next_State] RFID Card pulled.\n");
             nextState = RESET;
           }
         } else {
@@ -227,7 +234,7 @@ void next_State() {
         break;
       } else if (RFIDCARD_AUTH_CONST == false) {
         // Only a single sign-on is necessary:
-        if (digitalRead(BUTTON_STOP) == LOW) {
+        if (digitalRead(BUTTON_STOP) == BUTTON_PRESSED) {
           // Start the timer if not already active
           if (!stopButtonTimerActive) {
             stopButtonPressTime = millis();
@@ -235,6 +242,7 @@ void next_State() {
           }
           // If BUTTON_STOP has been LOW for at least 1s, enter RESET state
           if (millis() - stopButtonPressTime >= TIME_GLITCH_FILTER_RFID) {
+            Log.verbose("[next_State] Stop button pressed.\n");
             nextState = RESET;
           }
         } else {
@@ -244,7 +252,7 @@ void next_State() {
         break;
       }
     case RESET:
-      if ((digitalRead(BUTTON_RFID) == HIGH) && (digitalRead(BUTTON_STOP) == HIGH)) {
+      if ((digitalRead(BUTTON_RFID) != BUTTON_PRESSED) && (digitalRead(BUTTON_STOP) != BUTTON_PRESSED)) {
         // when both buttons are inactive, change to standby state
         nextState = STANDBY;
       }
@@ -281,6 +289,7 @@ void loop() {
 
   // overwrite state with stop button
   if (buttonStopPressed == true) {
+    Log.verbose("[loop] Stop button pressed.\n");
     // reset flag
     buttonStopPressed = 0;
     nextState = RESET;
