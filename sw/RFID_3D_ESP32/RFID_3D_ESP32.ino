@@ -216,13 +216,13 @@ void next_State() {
           // Reset the timer if BUTTON_STOP goes HIGH
           stopButtonTimerActive = false;
         }
-        if (digitalRead(BUTTON_RFID) == BUTTON_PRESSED) {
+        if (digitalRead(BUTTON_RFID) != BUTTON_PRESSED) {
           // Start the timer if not already active
           if (!rfidButtonTimerActive) {
             rfidButtonPressTime = millis();
             rfidButtonTimerActive = true;
           }
-          // If BUTTON_RFID has been HIGH for at least 3 seconds, enter RESET state
+          // If BUTTON_RFID has been pulled for at least 3 seconds, enter RESET state
           if (millis() - rfidButtonPressTime >= TIME_GLITCH_FILTER_RFID) {
             Log.verbose("[next_State] RFID Card pulled.\n");
             nextState = RESET;
