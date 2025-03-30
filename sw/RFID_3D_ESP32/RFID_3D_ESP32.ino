@@ -186,6 +186,7 @@ void next_State() {
       if (perform_auth_check()) {
         // when auth check was successful, start machine
         nextState = RUNNING;
+        delay(500); // Allow some buffer time before transitioning to RUNNING
       } else {
         // when auth check was not successful, return to reset state
         nextState = RESET;
