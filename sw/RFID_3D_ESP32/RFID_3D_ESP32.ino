@@ -71,13 +71,13 @@ portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;  ///< Mutex for interrupt safet
  *
  * Sets the flag when the button is pressed.
  */
-void IRAM_ATTR handleButtonStopFalling() {
+/*void IRAM_ATTR handleButtonStopFalling() {
   portENTER_CRITICAL_ISR(&mux);
   buttonStopPressed = true;
   portEXIT_CRITICAL_ISR(&mux);
-}
+}*/
 
-const int TIME_GLITCH_FILTER_STOP = 500;  ///< 0.5s button debounce time
+const int TIME_GLITCH_FILTER_STOP = 100;  ///< 0.5s button debounce time
 const int TIME_GLITCH_FILTER_RFID = 3000; ///< 3s button debounce time
 
 //------------------------------------------------------------------------------
@@ -142,7 +142,7 @@ void setup() {
 
   delay(1000);  // wait for pullups to get active
 
-  attachInterrupt(digitalPinToInterrupt(BUTTON_STOP), handleButtonStopFalling, FALLING);
+  //attachInterrupt(digitalPinToInterrupt(BUTTON_STOP), handleButtonStopFalling, FALLING);
 
   // Connect to WiFi
   connectToWiFi();
@@ -241,7 +241,7 @@ void next_State() {
             stopButtonTimerActive = true;
           }
           // If BUTTON_STOP has been LOW for at least 1s, enter RESET state
-          if (millis() - stopButtonPressTime >= TIME_GLITCH_FILTER_RFID) {
+          if (millis() - stopButtonPressTime >= TIME_GLITCH_FILTER_STOP) {
             Log.verbose("[next_State] Stop button pressed.\n");
             nextState = RESET;
           }
@@ -287,13 +287,13 @@ void next_State() {
  */
 void loop() {
 
-  // overwrite state with stop button
+  /*  // overwrite state with stop button
   if (buttonStopPressed == true) {
     Log.verbose("[loop] Stop button pressed.\n");
     // reset flag
     buttonStopPressed = 0;
     nextState = RESET;
-  }
+  }*/
 
   // Check WiFi
   checkWiFiConnection();
