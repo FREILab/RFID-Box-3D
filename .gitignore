@@ -55,3 +55,6 @@ dkms.conf
 /hardware/PCB/production/backups
 /hardware/PCB/RFID_Platine-backups
 /hw/PCB/RFID_Platine-backups
+hw/PCB/fp-info-cache
+/hw/PCB/RFID_Platine-backups
+/hw/PCB/RFID_Platine-backups
