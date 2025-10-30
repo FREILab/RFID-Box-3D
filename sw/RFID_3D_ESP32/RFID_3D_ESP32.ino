@@ -66,17 +66,6 @@ volatile bool buttonStopPressed = false;  ///< Flag for stop button press
 
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;  ///< Mutex for interrupt safety
 
-/**
- * @brief Interrupt handler for the stop button press.
- *
- * Sets the flag when the button is pressed.
- */
-/*void IRAM_ATTR handleButtonStopFalling() {
-  portENTER_CRITICAL_ISR(&mux);
-  buttonStopPressed = true;
-  portEXIT_CRITICAL_ISR(&mux);
-}*/
-
 const int TIME_GLITCH_FILTER_STOP = 100;  ///< 0.5s button debounce time
 const int TIME_GLITCH_FILTER_RFID = 3000; ///< 3s button debounce time
 
@@ -109,7 +98,6 @@ bool isCardAuthConst = RFIDCARD_AUTH_CONST;  ///< Constant for card authenticati
 /**
  * @brief Initializes hardware, connects to WiFi, and sets up the RFID module.
  */
-
 void setup() {
 
   Log.begin(LOG_LEVEL_VERBOSE, &Serial);  // Initialize logging
@@ -129,7 +117,6 @@ void setup() {
   pinMode(LED_YELLOW_PIN, OUTPUT);
   pinMode(LED_GREEN_PIN, OUTPUT);
 
-
   // RFID card detection button
   pinMode(BUTTON_RFID, INPUT_PULLUP);
   // Logout button
@@ -137,12 +124,9 @@ void setup() {
 
   // set initial states
   digitalWrite(MACHINE_RELAY_PIN, LOW);  // Ensure machine is off initially
-  setLED_ryg(1, 1, 1);                   // all reds on
-
+  setLED_ryg(1, 1, 1);                   // all LEDs on
 
   delay(1000);  // wait for pullups to get active
-
-  //attachInterrupt(digitalPinToInterrupt(BUTTON_STOP), handleButtonStopFalling, FALLING);
 
   // Connect to WiFi
   connectToWiFi();
@@ -173,7 +157,7 @@ void setup() {
  */
 void next_State() {
 
-  //Glich filter variables for RFID button
+  //Glitch filter variables for RFID button
   static unsigned long rfidButtonPressTime = 0;
   static bool rfidButtonTimerActive = false;
   static unsigned long stopButtonPressTime = 0;
@@ -186,6 +170,7 @@ void next_State() {
         nextState = IDENTIFICATION;
       }
       break;
+
     case IDENTIFICATION:
       if (perform_auth_check()) {
         // when auth check was successful, start machine
@@ -193,10 +178,11 @@ void next_State() {
         delay(500); // Allow some buffer time before transitioning to RUNNING
       } else {
         // when auth check was not successful, return to reset state
-        Log.verbose("[next_State] Identification not sucessful.\n");
+        Log.verbose("[next_State] Identification not successful.\n");
         nextState = RESET;
       }
       break;
+
     case RUNNING:
       // Differentiate if the machine needs the RFID card connected constantly:
       if (RFIDCARD_AUTH_CONST == true) {
@@ -207,15 +193,16 @@ void next_State() {
             stopButtonPressTime = millis();
             stopButtonTimerActive = true;
           }
-          // If BUTTON_STOP has been LOW for at least 1s, enter RESET state
+          // If BUTTON_STOP has been LOW for at least TIME_GLITCH_FILTER_STOP ms, enter RESET state
           if (millis() - stopButtonPressTime >= TIME_GLITCH_FILTER_STOP) {
             Log.verbose("[next_State] Stop button pressed.\n");
             nextState = RESET;
           }
-        }  else {
+        } else {
           // Reset the timer if BUTTON_STOP goes HIGH
           stopButtonTimerActive = false;
         }
+        
         if (digitalRead(BUTTON_RFID) != BUTTON_PRESSED) {
           // Start the timer if not already active
           if (!rfidButtonTimerActive) {
@@ -240,7 +227,7 @@ void next_State() {
             stopButtonPressTime = millis();
             stopButtonTimerActive = true;
           }
-          // If BUTTON_STOP has been LOW for at least 1s, enter RESET state
+          // If BUTTON_STOP has been LOW for at least TIME_GLITCH_FILTER_STOP ms, enter RESET state
           if (millis() - stopButtonPressTime >= TIME_GLITCH_FILTER_STOP) {
             Log.verbose("[next_State] Stop button pressed.\n");
             nextState = RESET;
@@ -251,6 +238,7 @@ void next_State() {
         }
         break;
       }
+
     case RESET:
       if ((digitalRead(BUTTON_RFID) != BUTTON_PRESSED) && (digitalRead(BUTTON_STOP) != BUTTON_PRESSED)) {
         // when both buttons are inactive, change to standby state
@@ -287,14 +275,6 @@ void next_State() {
  */
 void loop() {
 
-  /*  // overwrite state with stop button
-  if (buttonStopPressed == true) {
-    Log.verbose("[loop] Stop button pressed.\n");
-    // reset flag
-    buttonStopPressed = 0;
-    nextState = RESET;
-  }*/
-
   // Check WiFi
   checkWiFiConnection();
 
@@ -310,7 +290,7 @@ void loop() {
       break;
 
     case RUNNING:
-    digitalWrite(MACHINE_RELAY_PIN, HIGH);
+      digitalWrite(MACHINE_RELAY_PIN, HIGH);
       setLED_ryg(0, 0, 1);
       break;
 
@@ -328,7 +308,6 @@ void loop() {
  * @brief Set external LEDs
  */
 void setLED_ryg(bool led_red, bool led_yellow, bool led_green) {
-  //Log.verbose("Setting LEDs - Red: %d, Yellow: %d, Green: %d\n", led_red, led_yellow, led_green);
   digitalWrite(LED_RED_PIN, led_red);
   digitalWrite(LED_YELLOW_PIN, led_yellow);
   digitalWrite(LED_GREEN_PIN, led_green);
@@ -350,12 +329,12 @@ void connectToWiFi() {
   if (WiFi.status() == WL_CONNECTED) {
     Log.notice("[connectToWiFi] Connected to WiFi.\n");
   } else {
-    Log.warning("[connectToWiFi] WiFi disconnected! Reconnecting...\n");
+    Log.warning("[connectToWiFi] WiFi connection failed after 10 attempts!\n");
   }
 }
 
 /**
- * @brief Checks WiFi network cooection.
+ * @brief Checks WiFi network connection.
  */
 void checkWiFiConnection() {
   if (WiFi.status() != WL_CONNECTED) {
@@ -365,43 +344,46 @@ void checkWiFiConnection() {
 }
 
 /**
- * @brief Initializes the RFID module and performs a self-test.
+ * @brief Initializes the RFID module and verifies communication.
  */
 void initRFID() {
   Log.notice("[initRFID] Setting up SPI...\n");
   SPI.begin();  // Start SPI communication
 
-  Log.notice("[initRFID] Setting up RFID Module ...\n");
+  Log.notice("[initRFID] Setting up RFID Module...\n");
   mfrc522.PCD_Init();  // Initialize RFID module
-
-  // Perform self-test; restart ESP32 if initialization fails
-  /*
-  if (!mfrc522.PCD_PerformSelfTest()) {
-    Log.error("[initRFID] RFID self-test failed. Restarting ESP32...\n");
+  
+  delay(50);  // Short delay after initialization
+  
+  // Verify RFID module communication by reading firmware version
+  byte version = mfrc522.PCD_ReadRegister(mfrc522.VersionReg);
+  
+  if (version == 0x00 || version == 0xFF) {
+    Log.error("[initRFID] RFID module not responding! Check wiring. Version: 0x%02X\n", version);
+    Log.error("[initRFID] Expected version: 0x91 or 0x92. Restarting ESP32...\n");
     delay(2000);
     ESP.restart();
   } else {
     Log.notice("[initRFID] RFID reader initialized successfully.\n");
-  }*/
+    Log.notice("[initRFID] Firmware version: 0x%02X\n", version);
+  }
 }
 
 
 /**
- * @brief Handles login
+ * @brief Handles login authentication
  *
- * In this mode, the main switch (active low) triggers:
- *   - Login when the button is pressed.
- *   - Logout automatically when the button is released.
+ * Reads RFID card and attempts server authentication.
  */
 bool perform_auth_check() {
   // Read the RFID card UID and attempt login
   uid = readID();
   if (uid.equals("0")) {
-    Log.error("[perform_auth_check] Reading UID failed, aborting login");
-    return 0;
+    Log.error("[perform_auth_check] Reading UID failed, aborting login\n");
+    return false;
   }
   Log.notice("[perform_auth_check] Card UID: %s\n", uid.c_str());
-  // try authentification with the server
+  // try authentication with the server
   return tryLoginID(uid);
 }
 
@@ -412,35 +394,19 @@ bool perform_auth_check() {
  * Updates LED status based on the server response.
  *
  * @param uid The RFID card UID.
+ * @return 1 if successful, 0 if failed, -1 if busy
  */
 int tryLoginID(String uid) {
 
   // return value: 0 = failed, 1=success, -1=busy
   int authentication_success = 0;
 
-  // Indicate login attempt: turn on yellow LED and ensure red LED is off
-  // digitalWrite(LED_YELLOW, HIGH);
-  // digitalWrite(LED_RED, LOW);
-
   static HTTPClient http;
   static WiFiClient client;
 
-  // DEBUG ++++++++++++++ start ++++++++++++++++++++++++++++++++++++++++++++
-  /*
-  Log.verbose("[tryLoginID] Circumvent Auth; force sucessful login.\n");
-  loginState = HIGH;  //TODO: DEBUG
-  Log.notice("[tryLoginID] Login successful. UID: %s\n", uid.c_str());
-  Log.notice("[tryLoginID] Enabling Output.\n");
-  digitalWrite(LED_YELLOW, LOW);   // Turn off yellow LED
-  digitalWrite(LED_GREEN, HIGH);   // Indicate success with green LED
-  digitalWrite(RELAIS_PIN, HIGH);  // Activate relais pin
-  return;*/
-
-  // DEBUG ++++++++++++++ end ++++++++++++++++++++++++++++++++++++++++++++++
-
   // Avoid duplicate HTTP requests
   if (isHttpRequestInProgress || WiFi.status() != WL_CONNECTED) {
-    Log.warning("[tryLoginID] HTTP request already in progress. Skipping login attempt.\n");
+    Log.warning("[tryLoginID] HTTP request already in progress or WiFi not connected. Skipping login attempt.\n");
     return -1;
   }
   isHttpRequestInProgress = true;
@@ -455,17 +421,17 @@ int tryLoginID(String uid) {
   if (!http.begin(client, url)) {
     Log.error("[tryLoginID] Failed to initialize HTTP client for URL: %s\n", url.c_str());
     isHttpRequestInProgress = false;
-    http.end();  // End HTTP connection
+    http.end();
     return 0;
   }
 
   Log.info("[tryLoginID] Sending HTTP GET request for login...\n");
   int httpCode = http.GET();
 
-  if (httpCode > 0) {  // HTTP request successful
+  if (httpCode > 0) {
     Log.verbose("[tryLoginID] HTTP GET returned code: %d\n", httpCode);
 
-    if (httpCode == HTTP_CODE_OK) {  // 200 OK
+    if (httpCode == HTTP_CODE_OK) {
       String payload = http.getString();
       Log.verbose("[tryLoginID] Server response: %s\n", payload.c_str());
 
@@ -477,14 +443,16 @@ int tryLoginID(String uid) {
         Log.error("[tryLoginID] Login failed. Server response did not confirm login.\n");
         authentication_success = 0;
       }
+    } else {
+      Log.error("[tryLoginID] HTTP error code: %d\n", httpCode);
+      authentication_success = 0;
     }
   } else {
-    // HTTP GET failed; log the error details
     Log.error("[tryLoginID] HTTP GET failed: %s\n", http.errorToString(httpCode).c_str());
     authentication_success = 0;
   }
 
-  http.end();  // End HTTP connection
+  http.end();
   isHttpRequestInProgress = false;
   Log.verbose("[tryLoginID] HTTP connection closed.\n");
 
@@ -499,16 +467,7 @@ int tryLoginID(String uid) {
  * @return A String representing the UID in hexadecimal format, or "0" if no card is found.
  */
 String readID() {
-  Log.verbose("[readID] Attempt to Read RFID Card ... ");
-  /*
-  // Perform self-test; restart ESP32 if initialization fails
-  if (!mfrc522.PCD_PerformSelfTest()) {
-    Log.error("[readID] RFID self-test failed. Restarting ESP32...\n");
-    delay(2000);
-    // ESP.restart();
-  } else {
-    Log.notice("[initRFID] RFID reader initialized successfully.\n");
-  }*/
+  Log.verbose("[readID] Attempting to read RFID card...\n");
 
   for (int attempt = 0; attempt < 3; attempt++) {
     if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
@@ -519,10 +478,13 @@ String readID() {
       }
       mfrc522.PICC_HaltA();       // Halt the RFID card
       mfrc522.PCD_StopCrypto1();  // Stop encryption
+      
+      Log.verbose("[readID] Card read successfully: %s\n", uid.c_str());
       return uid;
     }
     delay(500);
   }
-  Log.error("[readID] No RFID card detected after multiple attempts.\n");
+  
+  Log.error("[readID] No RFID card detected after 3 attempts.\n");
   return "0";
 }
