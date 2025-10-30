@@ -375,13 +375,14 @@ void initRFID() {
   mfrc522.PCD_Init();  // Initialize RFID module
 
   // Perform self-test; restart ESP32 if initialization fails
+  /*
   if (!mfrc522.PCD_PerformSelfTest()) {
     Log.error("[initRFID] RFID self-test failed. Restarting ESP32...\n");
     delay(2000);
     ESP.restart();
   } else {
     Log.notice("[initRFID] RFID reader initialized successfully.\n");
-  }
+  }*/
 }
 
 
@@ -499,7 +500,7 @@ int tryLoginID(String uid) {
  */
 String readID() {
   Log.verbose("[readID] Attempt to Read RFID Card ... ");
-
+  /*
   // Perform self-test; restart ESP32 if initialization fails
   if (!mfrc522.PCD_PerformSelfTest()) {
     Log.error("[readID] RFID self-test failed. Restarting ESP32...\n");
@@ -507,7 +508,7 @@ String readID() {
     // ESP.restart();
   } else {
     Log.notice("[initRFID] RFID reader initialized successfully.\n");
-  }
+  }*/
 
   for (int attempt = 0; attempt < 3; attempt++) {
     if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
